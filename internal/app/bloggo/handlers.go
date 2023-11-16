@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/bkohler93/bootdev-blog-aggregator/internal/database"
@@ -12,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (cfg apiConfig) postUsers(w http.ResponseWriter, r *http.Request) {
+func (cfg apiConfig) handlerPostUsers(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	decoder := json.NewDecoder(r.Body)
 
@@ -41,29 +40,58 @@ func (cfg apiConfig) postUsers(w http.ResponseWriter, r *http.Request) {
 	helpers.RespondWithJSON(w, http.StatusCreated, resUser)
 }
 
-func getReadiness(w http.ResponseWriter, r *http.Request) {
+func handlerGetErr(w http.ResponseWriter, r *http.Request) {
+	helpers.RespondWithError(w, http.StatusInternalServerError, "Internal Server Error")
+}
+
+func handlerGetReadiness(w http.ResponseWriter, r *http.Request) {
 	res := map[string]interface{}{
 		"status": "ok",
 	}
 	helpers.RespondWithJSON(w, http.StatusOK, res)
 }
 
-func (cfg apiConfig) getUser(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if hasKey := strings.Contains(authHeader, "ApiKey"); !hasKey {
-		helpers.RespondWithError(w, http.StatusUnauthorized, "No Api Key in request headers")
-		return
-	}
+func (cfg apiConfig) handlerGetUser(w http.ResponseWriter, r *http.Request, u User) {
+	helpers.RespondWithJSON(w, http.StatusOK, u)
+}
 
-	apiKey := strings.Trim(authHeader, "ApiKey ")
+func (cfg *apiConfig) handlerPostFeed(w http.ResponseWriter, r *http.Request, u User) {
 
-	user, err := cfg.DB.GetUserByApiKey(r.Context(), apiKey)
+	parameters := struct {
+		Name string `json:"name"`
+		Url  string `json:"url"`
+	}{}
+
+	defer r.Body.Close()
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.Decode(&parameters)
+
+	feed, err := cfg.DB.CreateFeed(r.Context(), database.CreateFeedParams{
+		ID:        uuid.New(),
+		Url:       parameters.Url,
+		Name:      parameters.Name,
+		UserID:    u.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
 	if err != nil {
-		helpers.RespondWithError(w, http.StatusNotFound, "User with that Api Key cannot be found")
+		log.Println("error creating feed", err)
+		helpers.RespondWithError(w, http.StatusInternalServerError, "error creating feed")
 		return
 	}
 
-	resUser := databaseUserToUser(user)
+	f := databaseFeedToFeed(feed)
 
-	helpers.RespondWithJSON(w, http.StatusOK, resUser)
+	helpers.RespondWithJSON(w, http.StatusCreated, f)
+}
+
+func (cfg *apiConfig) handlerGetAllFeeds(w http.ResponseWriter, r *http.Request) {
+	feeds, err := cfg.DB.GetAllFeeds(r.Context())
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, "could not retrieve feeds")
+		return
+	}
+
+	helpers.RespondWithJSON(w, http.StatusOK, feeds)
 }

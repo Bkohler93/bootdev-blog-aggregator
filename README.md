@@ -15,3 +15,5 @@ goose postgres postgres://brettkohler:@localhost:5432/bloggo up
 ## SQL to Go: sqlc
 
 This project uses [sqlc](https://docs.sqlc.dev/en/latest/tutorials/getting-started-postgresql.html) to handle generating Go code directly from SQL queries.
+
+To generate code from the queries found in `/sql/queries` run the command `> sqlc generate` from the root directory of this project.
