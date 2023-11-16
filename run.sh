@@ -1,0 +1,1 @@
+go build -o bloggo cmd/main.go && ./bloggo
