@@ -15,5 +15,11 @@ func (cfg apiConfig) apiV1Router() *chi.Mux {
 	v1Router.Post("/feeds", cfg.middlewareAuth(cfg.handlerPostFeed))
 	v1Router.Get("/feeds", cfg.handlerGetAllFeeds)
 
+	v1Router.Post("/feed_follows", cfg.middlewareAuth(cfg.handlerPostFeedFollow))
+	v1Router.Delete("/feed_follows/{feedFollowID}", cfg.middlewareAuth(cfg.handleDeleteFeedFollow))
+	v1Router.Get("/feed_follows", cfg.middlewareAuth(cfg.handleGetUserFeedFollows))
+
+	v1Router.Get("/posts", cfg.middlewareAuth(cfg.handleGetUserPosts))
+
 	return v1Router
 }

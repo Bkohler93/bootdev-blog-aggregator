@@ -2,12 +2,15 @@ package bloggo
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/bkohler93/bootdev-blog-aggregator/internal/database"
 	"github.com/bkohler93/bootdev-blog-aggregator/internal/helpers"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -76,14 +79,33 @@ func (cfg *apiConfig) handlerPostFeed(w http.ResponseWriter, r *http.Request, u 
 		UpdatedAt: time.Now(),
 	})
 	if err != nil {
-		log.Println("error creating feed", err)
 		helpers.RespondWithError(w, http.StatusInternalServerError, "error creating feed")
 		return
 	}
 
-	f := databaseFeedToFeed(feed)
+	feedFollow, err := cfg.DB.CreateFeedFollow(r.Context(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		UserID:    u.ID,
+		FeedID:    feed.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, "error creating feed follow from new feed")
+	}
 
-	helpers.RespondWithJSON(w, http.StatusCreated, f)
+	f := databaseFeedToFeed(feed)
+	ff := databaseFeedFollowToFeedFollow(feedFollow)
+
+	resBody := struct {
+		Feed       Feed       `json:"feed"`
+		FeedFollow FeedFollow `json:"feed_follow"`
+	}{
+		Feed:       f,
+		FeedFollow: ff,
+	}
+
+	helpers.RespondWithJSON(w, http.StatusCreated, resBody)
 }
 
 func (cfg *apiConfig) handlerGetAllFeeds(w http.ResponseWriter, r *http.Request) {
@@ -94,4 +116,87 @@ func (cfg *apiConfig) handlerGetAllFeeds(w http.ResponseWriter, r *http.Request)
 	}
 
 	helpers.RespondWithJSON(w, http.StatusOK, feeds)
+}
+
+func (cfg *apiConfig) handlerPostFeedFollow(w http.ResponseWriter, r *http.Request, u User) {
+	parameters := struct {
+		FeedID uuid.UUID `json:"feed_id"`
+	}{}
+
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+
+	err := decoder.Decode(&parameters)
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusBadRequest, "invalid body, must provide `feed_id`")
+		return
+	}
+
+	feedFollow, err := cfg.DB.CreateFeedFollow(r.Context(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		UserID:    u.ID,
+		FeedID:    parameters.FeedID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, "error creating feed follow")
+		return
+	}
+
+	f := databaseFeedFollowToFeedFollow(feedFollow)
+
+	helpers.RespondWithJSON(w, http.StatusCreated, f)
+}
+
+func (cfg *apiConfig) handleDeleteFeedFollow(w http.ResponseWriter, r *http.Request, u User) {
+	feedFollowID := chi.URLParam(r, "feedFollowID")
+	feedFollowUID := uuid.MustParse(feedFollowID)
+
+	feedFollow, err := cfg.DB.GetFeedFollow(r.Context(), feedFollowUID)
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusBadRequest, "couldn't retrieve feed follow with follow_id")
+		return
+	}
+
+	if feedFollow.UserID != u.ID {
+		helpers.RespondWithError(w, http.StatusUnauthorized, "not authorized to delete that feed_follow")
+		return
+	}
+
+	err = cfg.DB.DeleteFeedFollow(r.Context(), feedFollowUID)
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, "could not delete feed follow")
+		return
+	}
+
+	helpers.RespondWithJSON(w, http.StatusOK, nil)
+}
+
+func (cfg *apiConfig) handleGetUserFeedFollows(w http.ResponseWriter, r *http.Request, u User) {
+	feedFollows, err := cfg.DB.GetUserFeedFollows(r.Context(), u.ID)
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, "could not retrieve user's feed follows")
+	}
+
+	helpers.RespondWithJSON(w, http.StatusOK, feedFollows)
+}
+
+func (cfg *apiConfig) handleGetUserPosts(w http.ResponseWriter, r *http.Request, u User) {
+	limit := r.URL.Query().Get("limit")
+	l, err := strconv.Atoi(limit)
+	if err != nil {
+		l = 10
+	}
+
+	posts, err := cfg.DB.GetUserPosts(r.Context(), database.GetUserPostsParams{
+		UserID: u.ID,
+		Limit:  int32(l),
+	})
+	if err != nil {
+		helpers.RespondWithError(w, http.StatusInternalServerError, fmt.Sprintf("could not retrieve posts", err))
+		return
+	}
+
+	helpers.RespondWithJSON(w, http.StatusOK, posts)
 }

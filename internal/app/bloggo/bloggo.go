@@ -39,6 +39,8 @@ func RunApp() {
 		DB: dbQueries,
 	}
 
+	go cfg.FetchFeedsWorker(10, 60)
+
 	router := chi.NewRouter()
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"https://*", "http://*"},
